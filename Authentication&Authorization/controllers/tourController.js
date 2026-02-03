@@ -1,0 +1,127 @@
+const Tour = require("./../Models/tourModels");
+const APIFeatures = require("./../Utils/apiFeatures");
+const catchAsync = require("express-async-handler");
+const AppError = require("./../Utils/appError");
+// ==================== ALIAS TOP TOURS ====================
+exports.aliasTopTours = (req, res, next) => {
+  req.query.limit = "5";
+  req.query.sort = "-ratingsAverage,price";
+  req.query.fields = "name,price,ratingsAverage,summary,difficulty";
+  next();
+};
+
+// ==================== GET ALL TOURS ====================
+exports.getAllTours = catchAsync(async (req, res, next) => {
+  const features = new APIFeatures(Tour.find(), req.query)
+    .filter()
+    .sort()
+    .limitFields()
+    .paginate();
+
+  const tours = await features.query;
+
+  res.status(200).json({
+    status: "success",
+    result: tours.length,
+    data: { tours },
+  });
+});
+
+// ==================== GET TOUR BY ID ====================
+exports.getTour = catchAsync(async (req, res, next) => {
+  const tour = await Tour.findById(req.params.id);
+
+  if (!tour) {
+    return next(new AppError("No tour found with this ID", 404));
+  }
+
+  res.status(200).json({
+    status: "success",
+    data: { tour },
+  });
+});
+
+// ==================== CREATE TOUR ====================
+exports.createTour = catchAsync(async (req, res, next) => {
+  const newTour = await Tour.create(req.body);
+
+  res.status(201).json({
+    status: "success",
+    data: { tour: newTour },
+  });
+});
+
+// ==================== UPDATE TOUR ====================
+exports.updateTour = catchAsync(async (req, res, next) => {
+  const tour = await Tour.findByIdAndUpdate(req.params.id, req.body, {
+    new: true,
+    runValidators: true,
+  });
+
+  if (!tour) {
+    return next(new AppError("No tour found with this ID", 404));
+  }
+
+  res.status(200).json({
+    status: "success",
+    data: { tour },
+  });
+});
+
+// ==================== DELETE TOUR ====================
+exports.deleteTour = catchAsync(async (req, res, next) => {
+  const tour = await Tour.findByIdAndDelete(req.params.id);
+
+  if (!tour) {
+    return next(new AppError("No tour found with this ID", 404));
+  }
+
+  res.status(204).send();
+});
+
+// ==================== GET TOUR STATS ====================
+exports.getTourStates = catchAsync(async (req, res, next) => {
+  const stats = await Tour.aggregate([
+    {
+      $match: { ratingsAverage: { $gte: 4.5 } },
+    },
+    {
+      $group: {
+        _id: null,
+        avgRating: { $avg: "$ratingsAverage" },
+        avgPrice: { $avg: "$price" },
+        minPrice: { $min: "$price" },
+        maxPrice: { $max: "$price" },
+      },
+    },
+  ]);
+
+  res.status(200).json({
+    status: "success",
+    data: { stats },
+  });
+});
+
+// ==================== GET MONTHLY PLAN ====================
+exports.getMonthlyPlan = catchAsync(async (req, res, next) => {
+  const year = req.params.year * 1;
+
+  const plan = await Tour.aggregate([
+    {
+      $unwind: "$startDates",
+    },
+    {
+      $match: {
+        startDates: {
+          $gte: new Date(`${year}-01-01`),
+          $lte: new Date(`${year}-12-31`),
+        },
+      },
+    },
+  ]);
+
+  res.status(200).json({
+    status: "success",
+    data: { plan },
+  });
+});
